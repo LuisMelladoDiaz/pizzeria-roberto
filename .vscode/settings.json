@@ -1,0 +1,11 @@
+{
+  "deno.enablePaths": ["supabase/functions"],
+  "deno.unstable": true,
+  "typescript.validate.enable": true,
+  "javascript.validate.enable": true,
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "editor.formatOnSave": true,
+  "files.exclude": {}
+}

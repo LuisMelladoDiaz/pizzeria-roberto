@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<!--
+  ServiCall – Icon Generator
+  Open this file in Chrome, then click the button to download
+  icon-192.png and icon-512.png. Copy both files to public/icons/
+-->
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Generar iconos ServiCall</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #1a1a1a; color: #fff;
+           display: flex; flex-direction: column; align-items: center;
+           justify-content: center; min-height: 100vh; gap: 16px; }
+    button { background: #F5C100; color: #1a1a1a; border: none; padding: 14px 32px;
+             border-radius: 12px; font-weight: 900; font-size: 16px; cursor: pointer; }
+    canvas { border: 2px solid #3a3a3a; border-radius: 12px; }
+    p { color: rgba(255,255,255,0.5); text-align: center; max-width: 380px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h2 style="color:#F5C100;">🍕 Generador de iconos ServiCall</h2>
+  <canvas id="c"></canvas>
+  <button onclick="generateAll()">⬇️ Descargar iconos (192 y 512 px)</button>
+  <p>Se descargarán dos archivos PNG. Cópialos a <code>public/icons/</code></p>
+
+  <script>
+    const canvas = document.getElementById('c')
+    const ctx = canvas.getContext('2d')
+
+    function draw(size) {
+      canvas.width = size
+      canvas.height = size
+      ctx.clearRect(0, 0, size, size)
+
+      // Background rounded rect
+      const r = size * 0.18
+      ctx.fillStyle = '#1A1A1A'
+      ctx.beginPath()
+      ctx.roundRect(0, 0, size, size, r)
+      ctx.fill()
+
+      // Inner card
+      const pad = size * 0.05
+      ctx.fillStyle = '#2A2A2A'
+      ctx.beginPath()
+      ctx.roundRect(pad, pad, size - pad*2, size - pad*2, r * 0.7)
+      ctx.fill()
+
+      // Pizza emoji
+      ctx.font = `${size * 0.58}px serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('🍕', size / 2, size * 0.48)
+
+      // Gold accent bar
+      ctx.fillStyle = '#F5C100'
+      ctx.beginPath()
+      ctx.roundRect(size*0.18, size*0.82, size*0.64, size*0.05, size*0.025)
+      ctx.fill()
+    }
+
+    function download(size) {
+      draw(size)
+      const a = document.createElement('a')
+      a.download = `icon-${size}.png`
+      a.href = canvas.toDataURL('image/png')
+      a.click()
+    }
+
+    function generateAll() {
+      download(192)
+      setTimeout(() => download(512), 600)
+    }
+
+    // Preview 192
+    draw(192)
+  </script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="100" fill="#1A1A1A"/>
+  <rect x="24" y="24" width="464" height="464" rx="80" fill="#2A2A2A"/>
+  <!-- Pizza slice centered -->
+  <text x="256" y="330" font-size="280" text-anchor="middle" dominant-baseline="auto">🍕</text>
+  <!-- Bottom accent bar -->
+  <rect x="96" y="420" width="320" height="8" rx="4" fill="#F5C100" opacity="0.8"/>
+</svg>
