@@ -135,6 +135,18 @@ export default function WaitingView() {
     return () => clearInterval(id)
   }, [ticket])
 
+  // Cliente reconoce la llamada pero aún no ha recogido → vuelve a espera
+  // El negocio puede llamarle de nuevo si hace falta
+  const handleAcknowledge = async () => {
+    if (!ticket) return
+    await supabase
+      .from('tickets')
+      .update({ status: 'waiting' })
+      .eq('id', ticket.id)
+    notifiedRef.current = false // permite recibir la siguiente llamada
+    setIsReady(false)
+  }
+
   const handleCollected = async () => {
     if (!ticket) return
     await supabase
@@ -191,15 +203,27 @@ export default function WaitingView() {
             </div>
           </div>
 
-          <p className="text-white/50 text-sm mb-10">🏃 ¡Date prisa antes de que se enfríe!</p>
+          <p className="text-white/50 text-sm mb-8">🏃 ¡Date prisa antes de que se enfríe!</p>
 
-          <button
-            onClick={handleCollected}
-            className="w-full max-w-xs bg-[#2A2A2A] border-2 border-[#F5C100] text-[#F5C100] font-black text-lg py-4 rounded-2xl active:scale-95 transition-all"
-            style={{ fontFamily: 'Nunito, sans-serif' }}
-          >
-            ✅ Ya lo recogí
-          </button>
+          <div className="w-full max-w-xs space-y-3">
+            {/* Reconoce la llamada pero no ha recogido aún */}
+            <button
+              onClick={handleAcknowledge}
+              className="w-full bg-[#2A2A2A] border-2 border-[#E87722] text-[#E87722] font-black text-lg py-4 rounded-2xl active:scale-95 transition-all"
+              style={{ fontFamily: 'Nunito, sans-serif' }}
+            >
+              📞 Ya voy, ahora voy
+            </button>
+
+            {/* Finaliza el ticket */}
+            <button
+              onClick={handleCollected}
+              className="w-full bg-[#2A2A2A] border-2 border-[#F5C100] text-[#F5C100] font-black text-lg py-4 rounded-2xl active:scale-95 transition-all"
+              style={{ fontFamily: 'Nunito, sans-serif' }}
+            >
+              ✅ Ya lo recogí
+            </button>
+          </div>
         </main>
       </div>
     )

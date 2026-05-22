@@ -104,24 +104,26 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
 
 interface TicketCardProps {
   ticket: Ticket
-  onReady: (id: string) => Promise<void>
-  onCollected: (id: string) => Promise<void>
+  onCall: (id: string) => Promise<void>
+  onFinalize: (id: string) => Promise<void>
   now: number
 }
 
-function TicketCard({ ticket, onReady, onCollected, now }: TicketCardProps) {
-  const [busy, setBusy] = useState(false)
+function TicketCard({ ticket, onCall, onFinalize, now }: TicketCardProps) {
+  const [busyCall, setBusyCall] = useState(false)
+  const [busyFinalize, setBusyFinalize] = useState(false)
   const waitSecs = Math.floor((now - new Date(ticket.created_at).getTime()) / 1000)
-  const isLong = waitSecs > 600 // 10 min warning
+  const isLong = waitSecs > 600
   const isReady = ticket.status === 'ready'
 
-  const handleAction = async (fn: (id: string) => Promise<void>) => {
-    setBusy(true)
-    try {
-      await fn(ticket.id)
-    } finally {
-      setBusy(false)
-    }
+  const handleCall = async () => {
+    setBusyCall(true)
+    try { await onCall(ticket.id) } finally { setBusyCall(false) }
+  }
+
+  const handleFinalize = async () => {
+    setBusyFinalize(true)
+    try { await onFinalize(ticket.id) } finally { setBusyFinalize(false) }
   }
 
   return (
@@ -145,7 +147,7 @@ function TicketCard({ ticket, onReady, onCollected, now }: TicketCardProps) {
             </span>
             {isReady && (
               <span className="bg-[#F5C100] text-[#1A1A1A] text-xs font-black px-2.5 py-0.5 rounded-full animate-pulse">
-                LISTO
+                LLAMADO
               </span>
             )}
           </div>
@@ -156,11 +158,11 @@ function TicketCard({ ticket, onReady, onCollected, now }: TicketCardProps) {
           >
             <span
               className={`w-2 h-2 rounded-full ${
-                isReady ? 'bg-[#F5C100]' : isLong ? 'bg-[#E87722] animate-pulse' : 'bg-white/30 animate-pulse'
+                isReady ? 'bg-[#F5C100] animate-pulse' : isLong ? 'bg-[#E87722] animate-pulse' : 'bg-white/30 animate-pulse'
               }`}
             />
             <span>
-              {isReady ? '¡Listo para recoger!' : `Esperando · ${elapsedLabel(ticket.created_at)}`}
+              {isReady ? 'Cliente avisado · esperando recogida' : `En espera · ${elapsedLabel(ticket.created_at)}`}
               {isLong && !isReady && ' ⚠️'}
             </span>
           </div>
@@ -168,26 +170,29 @@ function TicketCard({ ticket, onReady, onCollected, now }: TicketCardProps) {
       </div>
 
       <div className="flex gap-2">
-        {ticket.status === 'waiting' && (
-          <button
-            onClick={() => handleAction(onReady)}
-            disabled={busy}
-            className="flex-1 bg-[#F5C100] text-[#1A1A1A] font-black text-sm py-3.5 rounded-xl active:scale-95 disabled:opacity-50 transition-all shadow-sm"
-            style={{ fontFamily: 'Nunito, sans-serif' }}
-          >
-            {busy ? '⏳ Enviando...' : '🍕 Pedido Listo'}
-          </button>
-        )}
-        {ticket.status === 'ready' && (
-          <button
-            onClick={() => handleAction(onCollected)}
-            disabled={busy}
-            className="flex-1 bg-emerald-600 text-white font-black text-sm py-3.5 rounded-xl active:scale-95 disabled:opacity-50 transition-all"
-            style={{ fontFamily: 'Nunito, sans-serif' }}
-          >
-            {busy ? '⏳ Cerrando...' : '✅ Recogido'}
-          </button>
-        )}
+        {/* Llamar — siempre disponible, se puede pulsar varias veces */}
+        <button
+          onClick={handleCall}
+          disabled={busyCall || busyFinalize}
+          className={`flex-1 font-black text-sm py-3.5 rounded-xl active:scale-95 disabled:opacity-50 transition-all shadow-sm ${
+            isReady
+              ? 'bg-[#E87722] text-white'
+              : 'bg-[#F5C100] text-[#1A1A1A]'
+          }`}
+          style={{ fontFamily: 'Nunito, sans-serif' }}
+        >
+          {busyCall ? '⏳ Llamando...' : isReady ? '🔔 Llamar de nuevo' : '🍕 Llamar'}
+        </button>
+
+        {/* Finalizar — cierra el ticket definitivamente */}
+        <button
+          onClick={handleFinalize}
+          disabled={busyCall || busyFinalize}
+          className="flex-1 bg-emerald-600 text-white font-black text-sm py-3.5 rounded-xl active:scale-95 disabled:opacity-50 transition-all"
+          style={{ fontFamily: 'Nunito, sans-serif' }}
+        >
+          {busyFinalize ? '⏳...' : '✅ Finalizar'}
+        </button>
       </div>
     </div>
   )
@@ -236,12 +241,12 @@ export default function BusinessView() {
     return () => { supabase.removeChannel(channel) }
   }, [isLoggedIn, loadTickets])
 
-  const handleReady = async (ticketId: string) => {
+  // Llama al cliente (se puede usar N veces): envía push y marca como ready
+  const handleCall = async (ticketId: string) => {
     const { data: sessionData } = await supabase.auth.getSession()
     const token = sessionData.session?.access_token
 
     try {
-      // Call Edge Function — sends push + updates status atomically
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-notification`,
         {
@@ -256,7 +261,6 @@ export default function BusinessView() {
       if (!res.ok) throw new Error(await res.text())
     } catch (err) {
       console.warn('Edge Function unavailable, falling back to direct update:', err)
-      // Direct fallback (no push notification sent)
       await supabase
         .from('tickets')
         .update({ status: 'ready', notified_at: new Date().toISOString() })
@@ -264,7 +268,8 @@ export default function BusinessView() {
     }
   }
 
-  const handleCollected = async (ticketId: string) => {
+  // Finaliza el ticket definitivamente (el cliente ya recogió)
+  const handleFinalize = async (ticketId: string) => {
     await supabase
       .from('tickets')
       .update({ status: 'collected', collected_at: new Date().toISOString() })
@@ -345,14 +350,14 @@ export default function BusinessView() {
             {ready.length > 0 && (
               <>
                 <p className="text-[#F5C100]/60 text-xs font-bold uppercase tracking-wider px-1">
-                  Listos para recoger ({ready.length})
+                  Llamados – esperando recogida ({ready.length})
                 </p>
                 {ready.map((t) => (
                   <TicketCard
                     key={t.id}
                     ticket={t}
-                    onReady={handleReady}
-                    onCollected={handleCollected}
+                    onCall={handleCall}
+                    onFinalize={handleFinalize}
                     now={now}
                   />
                 ))}
@@ -369,8 +374,8 @@ export default function BusinessView() {
                   <TicketCard
                     key={t.id}
                     ticket={t}
-                    onReady={handleReady}
-                    onCollected={handleCollected}
+                    onCall={handleCall}
+                    onFinalize={handleFinalize}
                     now={now}
                   />
                 ))}
