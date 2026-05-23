@@ -44,7 +44,7 @@ export default function BusinessListView() {
         )}
       </header>
 
-      <main className="flex-1 px-4 py-6 max-w-lg mx-auto w-full">
+      <main className="flex-1 px-4 py-6 max-w-lg mx-auto w-full flex flex-col">
         <h2
           className="text-white font-black text-2xl mb-1"
           style={{ fontFamily: 'Nunito, sans-serif' }}
@@ -87,6 +87,15 @@ export default function BusinessListView() {
             ))}
           </div>
         )}
+
+        <div className="mt-auto pt-10 flex justify-center">
+          <button
+            onClick={() => navigate('/negocio')}
+            className="text-white/20 text-xs px-4 py-2 rounded-lg hover:text-white/40 transition-colors"
+          >
+            Acceso para negocios
+          </button>
+        </div>
       </main>
     </div>
   )
