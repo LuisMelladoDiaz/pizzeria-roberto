@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getStoredTickets, removeStoredTicket } from '../lib/storage'
+import { usePushNotifications } from '../hooks/usePushNotifications'
 import type { Ticket } from '../lib/supabase'
 import type { StoredTicket } from '../lib/storage'
 
@@ -37,16 +38,16 @@ function elapsedLabel(createdAt: string): string {
 
 export default function MyTicketsView() {
   const navigate = useNavigate()
+  const { isSupported, subscribe } = usePushNotifications()
   const [items, setItems] = useState<TicketItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [acknowledging, setAcknowledging] = useState<Set<string>>(new Set())
   const readySet = useRef<Set<string>>(new Set())
+  const subscriptionDone = useRef(false)
 
   const refresh = useCallback(async () => {
     const stored = getStoredTickets()
-    if (stored.length === 0) {
-      navigate('/cliente/negocios', { replace: true })
-      return
-    }
+    if (stored.length === 0) { navigate('/cliente/negocios', { replace: true }); return }
 
     const results = await Promise.all(
       stored.map(async (st) => {
@@ -60,19 +61,13 @@ export default function MyTicketsView() {
       }),
     )
 
-    // Remove finalized (deleted) tickets from localStorage
     results.filter((r) => !r.ticket).forEach((r) => {
       removeStoredTicket(r.stored.businessId, r.stored.ticketCode)
     })
 
     const active = results.filter((r) => r.ticket !== null) as TicketItem[]
+    if (active.length === 0) { navigate('/cliente/negocios', { replace: true }); return }
 
-    if (active.length === 0) {
-      navigate('/cliente/negocios', { replace: true })
-      return
-    }
-
-    // Play sound when a ticket becomes ready (only once per state change)
     active.forEach((item) => {
       const key = `${item.stored.businessId}-${item.stored.ticketCode}`
       if (item.ticket.status === 'ready' && !readySet.current.has(key)) {
@@ -80,9 +75,7 @@ export default function MyTicketsView() {
         playCallSound()
         if ('vibrate' in navigator) navigator.vibrate([300, 100, 300])
       }
-      if (item.ticket.status === 'waiting') {
-        readySet.current.delete(key)
-      }
+      if (item.ticket.status === 'waiting') readySet.current.delete(key)
     })
 
     setItems(active)
@@ -94,6 +87,53 @@ export default function MyTicketsView() {
     const id = setInterval(refresh, 4000)
     return () => clearInterval(id)
   }, [refresh])
+
+  // Looping alarm while any ticket is ready — only restarts when anyReady toggles
+  const anyReady = items.some((i) => i.ticket.status === 'ready')
+  useEffect(() => {
+    if (!anyReady) return
+    const id = window.setInterval(() => {
+      playCallSound()
+      if ('vibrate' in navigator) navigator.vibrate([300, 100, 300])
+    }, 4000)
+    return () => window.clearInterval(id)
+  }, [anyReady])
+
+  // Ensure all active tickets have a push subscription (attempted once after first load)
+  useEffect(() => {
+    if (loading || !isSupported || subscriptionDone.current) return
+    subscriptionDone.current = true
+    subscribe().then((sub) => {
+      if (!sub) return
+      items.forEach((item) => {
+        if (!item.ticket.push_subscription) {
+          supabase
+            .from('tickets')
+            .update({ push_subscription: sub })
+            .eq('id', item.ticket.id)
+            .then(() => {/* silent */})
+        }
+      })
+    })
+  }, [loading, isSupported, items, subscribe])
+
+  const handleAcknowledge = async (item: TicketItem) => {
+    const key = `${item.stored.businessId}-${item.stored.ticketCode}`
+    setAcknowledging((prev) => new Set(prev).add(key))
+    try {
+      await supabase.from('tickets').update({ status: 'waiting' }).eq('id', item.ticket.id)
+      readySet.current.delete(key)
+      setItems((prev) =>
+        prev.map((i) =>
+          i.stored.businessId === item.stored.businessId && i.stored.ticketCode === item.stored.ticketCode
+            ? { ...i, ticket: { ...i.ticket, status: 'waiting' } }
+            : i,
+        ),
+      )
+    } finally {
+      setAcknowledging((prev) => { const s = new Set(prev); s.delete(key); return s })
+    }
+  }
 
   if (loading) {
     return (
@@ -129,11 +169,13 @@ export default function MyTicketsView() {
       <main className="flex-1 px-4 py-5 max-w-lg mx-auto w-full space-y-3">
         {items.map((item) => {
           const isReady = item.ticket.status === 'ready'
+          const key = `${item.stored.businessId}-${item.stored.ticketCode}`
+          const isBusy = acknowledging.has(key)
+
           return (
-            <button
-              key={`${item.stored.businessId}-${item.stored.ticketCode}`}
-              onClick={() => navigate(`/cliente/espera/${item.stored.businessSlug}/${item.stored.ticketCode}`)}
-              className={`w-full text-left rounded-2xl p-5 border-2 transition-all active:scale-95 ${
+            <div
+              key={key}
+              className={`rounded-2xl p-5 border-2 transition-all ${
                 isReady
                   ? 'bg-[#F5C100] border-[#F5C100] shadow-[0_0_32px_rgba(245,193,0,0.3)]'
                   : 'bg-[#2A2A2A] border-[#3A3A3A]'
@@ -152,7 +194,7 @@ export default function MyTicketsView() {
                     {item.stored.ticketCode}
                   </p>
                 </div>
-                <div className="ml-auto flex-shrink-0 text-right">
+                <div className="ml-auto flex-shrink-0">
                   {isReady ? (
                     <span
                       className="bg-[#1A1A1A]/20 text-[#1A1A1A] text-xs font-black px-2.5 py-1 rounded-full animate-pulse"
@@ -166,11 +208,22 @@ export default function MyTicketsView() {
                 </div>
               </div>
 
-              <div className={`flex items-center gap-2 text-sm ${isReady ? 'text-[#1A1A1A]/70' : 'text-white/40'}`}>
-                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isReady ? 'bg-[#1A1A1A]/40 animate-pulse' : 'bg-white/30 animate-pulse'}`} />
-                <span>{isReady ? '🏃 Pasa a recogerlo – toca para avisar que vas' : 'En preparación…'}</span>
-              </div>
-            </button>
+              {isReady ? (
+                <button
+                  onClick={() => handleAcknowledge(item)}
+                  disabled={isBusy}
+                  className="w-full bg-[#1A1A1A] text-[#F5C100] font-black text-base py-3.5 rounded-xl active:scale-95 disabled:opacity-50 transition-all"
+                  style={{ fontFamily: 'Nunito, sans-serif' }}
+                >
+                  {isBusy ? '⏳...' : '📞 Ya voy, ahora voy'}
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-white/40">
+                  <span className="w-2 h-2 rounded-full flex-shrink-0 bg-white/30 animate-pulse" />
+                  <span>En preparación…</span>
+                </div>
+              )}
+            </div>
           )
         })}
       </main>

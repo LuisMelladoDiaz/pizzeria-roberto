@@ -29,10 +29,7 @@ self.addEventListener('push', (event) => {
 // Notification click → open waiting view
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const d = event.notification.data as { ticket_code?: string; business_slug?: string } | undefined
-  const url = d?.business_slug && d?.ticket_code
-    ? `/cliente/espera/${d.business_slug}/${d.ticket_code}`
-    : '/cliente/mis-tickets'
+  const url = '/cliente/mis-tickets'
 
   event.waitUntil(
     (self.clients as Clients)

@@ -4,7 +4,6 @@ import { getStoredTickets } from './lib/storage'
 import BusinessListView from './views/BusinessListView'
 import ClientView from './views/ClientView'
 import MyTicketsView from './views/MyTicketsView'
-import WaitingView from './views/WaitingView'
 import BusinessView from './views/BusinessView'
 
 // Smart entry point: routes client to tickets list or business list
@@ -26,7 +25,7 @@ export default function App() {
         <Route path="/cliente/negocios" element={<BusinessListView />} />
         <Route path="/cliente/negocio/:businessSlug" element={<ClientView />} />
         <Route path="/cliente/mis-tickets" element={<MyTicketsView />} />
-        <Route path="/cliente/espera/:businessSlug/:ticketCode" element={<WaitingView />} />
+        <Route path="/cliente/espera/*" element={<Navigate to="/cliente/mis-tickets" replace />} />
         <Route path="/negocio" element={<BusinessView />} />
         <Route path="*" element={<Navigate to="/cliente" replace />} />
       </Routes>
