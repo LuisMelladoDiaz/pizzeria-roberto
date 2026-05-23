@@ -38,7 +38,7 @@ function elapsedLabel(createdAt: string): string {
 
 export default function MyTicketsView() {
   const navigate = useNavigate()
-  const { isSupported, subscribe } = usePushNotifications()
+  const { isSupported, permission, subscribe } = usePushNotifications()
   const [items, setItems] = useState<TicketItem[]>([])
   const [loading, setLoading] = useState(true)
   const [acknowledging, setAcknowledging] = useState<Set<string>>(new Set())
@@ -87,6 +87,13 @@ export default function MyTicketsView() {
     const id = setInterval(refresh, 4000)
     return () => clearInterval(id)
   }, [refresh])
+
+  // Warn before closing the tab/app while tickets are active
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault() }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [])
 
   // Looping alarm while any ticket is ready — only restarts when anyReady toggles
   const anyReady = items.some((i) => i.ticket.status === 'ready')
@@ -165,6 +172,17 @@ export default function MyTicketsView() {
           </button>
         </div>
       </header>
+
+      {/* Keep-app-open warning */}
+      <div className={`px-4 py-2.5 text-xs text-center font-medium ${
+        permission === 'granted'
+          ? 'bg-emerald-900/40 text-emerald-400/80'
+          : 'bg-[#E87722]/10 text-[#E87722]/80'
+      }`}>
+        {permission === 'granted'
+          ? '🔔 Notificaciones activas — te avisaremos aunque cierres la app'
+          : '⚠️ Mantén YaVoy abierto — si cierras la app podrías perderte la llamada'}
+      </div>
 
       <main className="flex-1 px-4 py-5 max-w-lg mx-auto w-full space-y-3">
         {items.map((item) => {
