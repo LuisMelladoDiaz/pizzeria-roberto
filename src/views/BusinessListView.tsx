@@ -29,7 +29,7 @@ export default function BusinessListView() {
           <span className="text-3xl">🎫</span>
           <div>
             <h1 className="text-white font-black text-lg leading-tight" style={{ fontFamily: 'Nunito, sans-serif' }}>
-              ServiCall
+              YaVoy
             </h1>
             <p className="text-white/40 text-xs">Elige dónde estás</p>
           </div>

@@ -18,9 +18,9 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
       },
       manifest: {
-        name: 'ServiCall – Pizzería Roberto',
-        short_name: 'ServiCall',
-        description: 'Sistema de llamada de clientes para Pizzería Roberto',
+        name: 'YaVoy',
+        short_name: 'YaVoy',
+        description: 'Te avisamos cuando tu pedido esté listo',
         theme_color: '#F5C100',
         background_color: '#1A1A1A',
         display: 'standalone',

@@ -1,6 +1,6 @@
 // Client-side ticket association — no personal data, RGPD-exempt
-const LS_KEY = 'servi-call-tickets-v2'
-export const SORT_KEY = 'servi-call-sort'
+const LS_KEY = 'yavoy-tickets-v1'
+export const SORT_KEY = 'yavoy-sort'
 
 export interface StoredTicket {
   businessId: string
