@@ -9,14 +9,25 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-export type TicketStatus = 'waiting' | 'ready' | 'collected'
+export type TicketStatus = 'waiting' | 'ready'
+
+export interface Business {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  logo_emoji: string
+  owner_email: string | null
+  active: boolean
+  created_at: string
+}
 
 export interface Ticket {
   id: string
+  business_id: string
   ticket_code: string
   status: TicketStatus
   push_subscription: PushSubscriptionJSON | null
   created_at: string
   notified_at: string | null
-  collected_at: string | null
 }

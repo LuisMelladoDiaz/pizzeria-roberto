@@ -42,12 +42,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .from('tickets')
       .update({ status: 'ready', notified_at: new Date().toISOString() })
       .eq('id', ticket_id)
-      .select()
+      .select('*, businesses(slug)')
       .single()
 
     if (updateErr || !ticket) {
       throw new Error(`Error actualizando ticket: ${updateErr?.message ?? 'no encontrado'}`)
     }
+
+    const businessSlug = ticket.businesses?.slug ?? null
 
     // Send Web Push only if the client has a stored subscription
     if (ticket.push_subscription && vapidPublicKey && vapidPrivateKey) {
@@ -59,6 +61,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           title: '🍕 ¡Tu pedido está listo!',
           body: `Pedido #${ticket.ticket_code as string} – Pasa a recogerlo en el mostrador`,
           ticket_code: ticket.ticket_code,
+          business_slug: businessSlug,
         }),
       )
     }

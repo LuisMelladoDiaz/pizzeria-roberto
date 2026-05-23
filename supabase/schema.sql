@@ -1,56 +1,68 @@
 -- ============================================================
---  ServiCall – Pizzería Roberto  |  Supabase schema
---  Run this entire file in the Supabase SQL Editor
+--  ServiCall – Schema v2  |  Ejecutar en Supabase SQL Editor
 -- ============================================================
 
--- Enable UUID generation
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- ── tickets ─────────────────────────────────────────────────
-CREATE TABLE public.tickets (
-  id               UUID        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  ticket_code      TEXT        NOT NULL UNIQUE,
-  status           TEXT        NOT NULL DEFAULT 'waiting'
-                               CHECK (status IN ('waiting', 'ready', 'collected')),
-  push_subscription JSONB,
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  notified_at      TIMESTAMPTZ,
-  collected_at     TIMESTAMPTZ
+-- ── businesses ───────────────────────────────────────────────
+CREATE TABLE public.businesses (
+  id          UUID        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  name        TEXT        NOT NULL,
+  slug        TEXT        NOT NULL UNIQUE,
+  description TEXT,
+  logo_emoji  TEXT        NOT NULL DEFAULT '🍕',
+  owner_email TEXT,
+  active      BOOLEAN     NOT NULL DEFAULT true,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Indexes
-CREATE INDEX idx_tickets_code    ON public.tickets (ticket_code);
-CREATE INDEX idx_tickets_status  ON public.tickets (status);
-CREATE INDEX idx_tickets_created ON public.tickets (created_at DESC);
+ALTER TABLE public.businesses ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "businesses_public_read" ON public.businesses
+  FOR SELECT USING (active = true);
 
--- ── Row Level Security ───────────────────────────────────────
+-- ── tickets ──────────────────────────────────────────────────
+CREATE TABLE public.tickets (
+  id                UUID        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  business_id       UUID        NOT NULL REFERENCES public.businesses(id) ON DELETE CASCADE,
+  ticket_code       TEXT        NOT NULL,
+  status            TEXT        NOT NULL DEFAULT 'waiting'
+                                CHECK (status IN ('waiting', 'ready')),
+  push_subscription JSONB,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  notified_at       TIMESTAMPTZ,
+  -- code is unique per business (two businesses can have the same code)
+  UNIQUE (ticket_code, business_id)
+);
+
+CREATE INDEX idx_tickets_biz_code   ON public.tickets (business_id, ticket_code);
+CREATE INDEX idx_tickets_biz_status ON public.tickets (business_id, status);
+CREATE INDEX idx_tickets_created    ON public.tickets (created_at DESC);
+
 ALTER TABLE public.tickets ENABLE ROW LEVEL SECURITY;
+-- REPLICA IDENTITY FULL: DELETE events include full row data (needed for Realtime)
+ALTER TABLE public.tickets REPLICA IDENTITY FULL;
 
--- Anyone (anonymous clients) can read tickets
-CREATE POLICY "public_read" ON public.tickets
-  FOR SELECT USING (true);
-
--- Anyone can create a ticket (client registers their code)
-CREATE POLICY "public_insert" ON public.tickets
-  FOR INSERT WITH CHECK (true);
-
--- Anyone can update (clients save push subscription; business updates status via Edge Function)
-CREATE POLICY "public_update" ON public.tickets
-  FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY "tickets_public_read"   ON public.tickets FOR SELECT USING (true);
+CREATE POLICY "tickets_public_insert" ON public.tickets FOR INSERT WITH CHECK (true);
+CREATE POLICY "tickets_public_update" ON public.tickets FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY "tickets_public_delete" ON public.tickets FOR DELETE USING (true);
 
 -- ── Realtime ─────────────────────────────────────────────────
--- Enable realtime for the tickets table so clients get live updates
 ALTER PUBLICATION supabase_realtime ADD TABLE public.tickets;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.businesses;
 
--- ── Seed: business user ──────────────────────────────────────
--- Create the Pizzería Roberto business account in Supabase Auth.
--- Replace the password with a secure one matching VITE_BUSINESS_PASSWORD.
---
--- Run in the Supabase dashboard → Authentication → Users → "Add user"
--- OR via the Supabase CLI / API:
---
---   curl -X POST https://YOUR_PROJECT.supabase.co/auth/v1/admin/users \
---     -H "apikey: YOUR_SERVICE_ROLE_KEY" \
---     -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
---     -H "Content-Type: application/json" \
---     -d '{"email":"roberto@pizzeria.com","password":"YOUR_PASSWORD","email_confirm":true}'
+-- ── Seed: Pizzería Roberto ────────────────────────────────────
+INSERT INTO public.businesses (id, name, slug, description, logo_emoji, owner_email)
+VALUES (
+  'a0000000-0000-0000-0000-000000000001'::uuid,
+  'Pizzería Roberto',
+  'pizzeria-roberto',
+  'Las mejores pizzas de la ciudad',
+  '🍕',
+  'roberto@pizzeria.com'
+);
+
+-- ── Seed: business auth user ──────────────────────────────────
+-- Create roberto@pizzeria.com in Supabase Auth:
+-- Dashboard → Authentication → Users → Add user → Auto Confirm User ✓
+-- Or via API (ver README).

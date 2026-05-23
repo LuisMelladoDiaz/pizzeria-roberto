@@ -9,7 +9,7 @@ cleanupOutdatedCaches()
 
 // Push notification handler
 self.addEventListener('push', (event) => {
-  const data: { title?: string; body?: string; ticket_code?: string } =
+  const data: { title?: string; body?: string; ticket_code?: string; business_slug?: string } =
     event.data?.json() ?? {}
 
   const title = data.title ?? '🍕 ¡Tu pedido está listo!'
@@ -29,8 +29,10 @@ self.addEventListener('push', (event) => {
 // Notification click → open waiting view
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const ticketCode: string | undefined = (event.notification.data as { ticket_code?: string })?.ticket_code
-  const url = ticketCode ? `/cliente/espera/${ticketCode}` : '/cliente'
+  const d = event.notification.data as { ticket_code?: string; business_slug?: string } | undefined
+  const url = d?.business_slug && d?.ticket_code
+    ? `/cliente/espera/${d.business_slug}/${d.ticket_code}`
+    : '/cliente/mis-tickets'
 
   event.waitUntil(
     (self.clients as Clients)

@@ -1,108 +1,147 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { addStoredTicket, getStoredTickets } from '../lib/storage'
 import { usePushNotifications } from '../hooks/usePushNotifications'
+import type { Business } from '../lib/supabase'
+
+function todayStart(): string {
+  const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString()
+}
 
 export default function ClientView() {
-  const [ticketCode, setTicketCode] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [showInstallBanner, setShowInstallBanner] = useState(false)
+  const { businessSlug } = useParams<{ businessSlug: string }>()
   const navigate = useNavigate()
   const { isSupported, subscribe } = usePushNotifications()
 
+  const [business, setBusiness] = useState<Business | null>(null)
+  const [ticketCode, setTicketCode] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  // Load business by slug
   useEffect(() => {
-    // Show install banner on Android Chrome if not already installed
-    const isAndroid = /android/i.test(navigator.userAgent)
-    const isChrome = /chrome/i.test(navigator.userAgent)
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
-    setShowInstallBanner(isAndroid && isChrome && !isStandalone)
-  }, [])
+    if (!businessSlug) { navigate('/cliente/negocios'); return }
+
+    supabase
+      .from('businesses')
+      .select('*')
+      .eq('slug', businessSlug)
+      .eq('active', true)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!data) { navigate('/cliente/negocios'); return }
+        setBusiness(data as Business)
+        setLoading(false)
+      })
+  }, [businessSlug, navigate])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!business) return
     const code = ticketCode.trim().toUpperCase()
     if (!code) return
 
-    setLoading(true)
+    setSubmitting(true)
     setError('')
 
     try {
-      // Get existing ticket or create one
+      // Check if this code already exists today for this business
       const { data: existing } = await supabase
         .from('tickets')
-        .select('*')
+        .select('id, status')
         .eq('ticket_code', code)
+        .eq('business_id', business.id)
+        .gte('created_at', todayStart())
         .maybeSingle()
 
-      if (!existing) {
-        const { error: insertErr } = await supabase
-          .from('tickets')
-          .insert({ ticket_code: code, status: 'waiting' })
-        if (insertErr) throw insertErr
+      if (existing) {
+        // If it's our own saved ticket, redirect back
+        const mine = getStoredTickets().find(
+          (t) => t.businessId === business.id && t.ticketCode === code,
+        )
+        if (mine) { navigate(`/cliente/espera/${businessSlug}/${code}`); return }
+        setError('Este código ya está en uso hoy en este establecimiento. Verifica tu ticket.')
+        return
       }
+
+      // Create ticket
+      const { error: insertErr } = await supabase
+        .from('tickets')
+        .insert({ ticket_code: code, business_id: business.id, status: 'waiting' })
+      if (insertErr) throw insertErr
 
       // Try to subscribe to push notifications
       if (isSupported) {
-        const subscription = await subscribe()
-        if (subscription) {
+        const sub = await subscribe()
+        if (sub) {
           await supabase
             .from('tickets')
-            .update({ push_subscription: subscription })
+            .update({ push_subscription: sub })
             .eq('ticket_code', code)
+            .eq('business_id', business.id)
         }
       }
 
-      navigate(`/cliente/espera/${code}`)
+      // Save to localStorage (no personal data)
+      addStoredTicket({
+        businessId: business.id,
+        businessSlug: business.slug,
+        businessName: business.name,
+        businessEmoji: business.logo_emoji,
+        ticketCode: code,
+      })
+
+      navigate(`/cliente/espera/${businessSlug}/${code}`)
     } catch (err) {
       console.error(err)
-      setError('No se pudo registrar el ticket. Verifica el código e intenta de nuevo.')
+      setError('No se pudo registrar el ticket. Intenta de nuevo.')
     } finally {
-      setLoading(false)
+      setSubmitting(false)
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#1A1A1A] flex items-center justify-center">
+        <div className="text-5xl animate-spin">⏳</div>
+      </div>
+    )
   }
 
   return (
     <div className="min-h-screen bg-[#1A1A1A] flex flex-col">
-      {/* Header */}
-      <header className="bg-[#2A2A2A] py-4 px-6 flex items-center justify-center border-b border-[#F5C100]/20">
-        <div className="flex items-center gap-3">
-          <span className="text-4xl">🍕</span>
-          <div>
-            <h1
-              className="text-[#F5C100] font-black text-xl tracking-wide leading-tight"
-              style={{ fontFamily: 'Nunito, sans-serif' }}
-            >
-              Pizzería Roberto
-            </h1>
-            <p className="text-white/40 text-xs">Sistema de llamada de pedidos</p>
-          </div>
+      <header className="bg-[#2A2A2A] py-4 px-6 flex items-center gap-3 border-b border-[#F5C100]/20">
+        <button onClick={() => navigate('/cliente/negocios')} className="text-white/40 hover:text-white transition-colors text-xl">
+          ‹
+        </button>
+        <span className="text-3xl">{business?.logo_emoji}</span>
+        <div>
+          <h1 className="text-[#F5C100] font-black text-lg leading-tight" style={{ fontFamily: 'Nunito, sans-serif' }}>
+            {business?.name}
+          </h1>
+          <p className="text-white/40 text-xs">Introduce tu número de ticket</p>
         </div>
       </header>
 
-      {/* Main */}
       <main className="flex-1 flex flex-col items-center justify-center px-6 py-8">
         <div className="w-full max-w-sm animate-fade-in-up">
-          {/* Hero */}
           <div className="text-center mb-10">
             <div className="text-7xl mb-4 select-none">🎫</div>
-            <h2
-              className="text-white font-black text-2xl mb-2"
-              style={{ fontFamily: 'Nunito, sans-serif' }}
-            >
-              ¡Ingresa tu ticket!
+            <h2 className="text-white font-black text-2xl mb-2" style={{ fontFamily: 'Nunito, sans-serif' }}>
+              ¡Introduce tu ticket!
             </h2>
             <p className="text-white/50 text-sm leading-relaxed">
               Escribe el código de tu ticket y te avisamos cuando tu pedido esté listo
             </p>
           </div>
 
-          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <input
               type="text"
               value={ticketCode}
-              onChange={(e) => setTicketCode(e.target.value.toUpperCase())}
+              onChange={(e) => { setTicketCode(e.target.value.toUpperCase()); setError('') }}
               placeholder="Ej: A23"
               maxLength={10}
               autoComplete="off"
@@ -120,15 +159,14 @@ export default function ClientView() {
 
             <button
               type="submit"
-              disabled={loading || !ticketCode.trim()}
+              disabled={submitting || !ticketCode.trim()}
               className="w-full bg-[#F5C100] text-[#1A1A1A] font-black text-lg py-5 rounded-2xl disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95 hover:bg-[#E8B800] shadow-lg shadow-[#F5C100]/20"
               style={{ fontFamily: 'Nunito, sans-serif' }}
             >
-              {loading ? '⏳ Registrando...' : '✅ Esperar mi pedido'}
+              {submitting ? '⏳ Registrando...' : '🎫 Introducir ticket'}
             </button>
           </form>
 
-          {/* No push support warning */}
           {!isSupported && (
             <div className="mt-4 bg-[#E87722]/15 border border-[#E87722]/40 text-[#E87722] text-xs px-4 py-3 rounded-xl text-center">
               💡 Para recibir notificaciones, abre esta web en <strong>Chrome para Android</strong>
@@ -136,23 +174,6 @@ export default function ClientView() {
           )}
         </div>
       </main>
-
-      {/* PWA Install Banner */}
-      {showInstallBanner && (
-        <div className="px-4 pb-6">
-          <div className="bg-[#2A2A2A] border border-[#F5C100]/25 rounded-2xl p-4 flex items-center gap-3">
-            <span className="text-3xl flex-shrink-0">📲</span>
-            <div className="min-w-0">
-              <p className="text-white text-sm font-bold leading-tight">
-                Añade a tu pantalla de inicio
-              </p>
-              <p className="text-white/45 text-xs mt-0.5">
-                Menú ··· → "Añadir a pantalla de inicio" para recibir notificaciones siempre
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
