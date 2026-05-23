@@ -143,6 +143,8 @@ export default function BusinessView() {
   const [business, setBusiness] = useState<Business | null>(null)
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [now, setNow] = useState(Date.now())
+  const [cleanConfirm, setCleanConfirm] = useState(false)
+  const [cleaning, setCleaning] = useState(false)
   const [sortBy, setSortBy] = useState<SortMode>(
     () => (localStorage.getItem(SORT_KEY) as SortMode) ?? 'time',
   )
@@ -210,6 +212,14 @@ export default function BusinessView() {
 
   const handleFinalize = async (ticketId: string) => {
     await supabase.from('tickets').delete().eq('id', ticketId)
+  }
+
+  const handleCleanAll = async () => {
+    if (!business) return
+    setCleaning(true)
+    await supabase.from('tickets').delete().eq('business_id', business.id)
+    setCleaning(false)
+    setCleanConfirm(false)
   }
 
   const handleLogout = async () => {
@@ -309,6 +319,41 @@ export default function BusinessView() {
             )}
           </div>
         )}
+
+        {/* End-of-night cleanup */}
+        <div className="mt-8 pt-6 border-t border-white/5">
+          {cleanConfirm ? (
+            <div className="bg-red-950/60 border border-red-500/30 rounded-2xl p-5 text-center space-y-4">
+              <p className="text-white font-bold text-sm">
+                ¿Seguro? Se borrarán <span className="text-red-400">todos los tickets activos</span> de esta sesión.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setCleanConfirm(false)}
+                  disabled={cleaning}
+                  className="flex-1 bg-white/10 text-white/70 font-bold text-sm py-3 rounded-xl active:scale-95 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleCleanAll}
+                  disabled={cleaning}
+                  className="flex-1 bg-red-600 text-white font-black text-sm py-3 rounded-xl active:scale-95 disabled:opacity-50 transition-all"
+                  style={{ fontFamily: 'Nunito, sans-serif' }}
+                >
+                  {cleaning ? '⏳ Limpiando...' : '🧹 Sí, limpiar todo'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setCleanConfirm(true)}
+              className="w-full text-white/25 text-sm font-bold py-3 rounded-xl border border-white/8 hover:border-white/20 hover:text-white/50 transition-all"
+            >
+              🧹 Limpio!
+            </button>
+          )}
+        </div>
       </main>
     </div>
   )
